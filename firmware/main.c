@@ -8,6 +8,9 @@
 #include "esp_log.h"
 #include "ble_status.h"
 #include "posture.h"
+#include "pose_storage.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 #include "interaction.h"
 #include "pose_countdown.h"
 #include "pose_rules.h"
@@ -199,8 +202,7 @@ static void show_page(unsigned index)
     if(index!=2) teach_pending=-1;
     if(index==2) {
         pending_pose=-1;pending_at=0;
-        pose_enabled=false;
-        if(pose_toggle_text) lv_label_set_text(pose_toggle_text,"Pose locked / tap to enable");
+        // The settings page suspends actions without changing the saved enable flag.
     }
     for(unsigned i=0;i<3;i++) {
         if(i==index) lv_obj_remove_flag(pages[i],LV_OBJ_FLAG_HIDDEN);
@@ -318,6 +320,13 @@ static void finish_action(lv_event_t *event)
 static void teach_pose(lv_event_t *event)
 {
     unsigned slot=(unsigned)(uintptr_t)lv_event_get_user_data(event);
+    // Recalibration explicitly locks automation until the user enables it again.
+    if(pose_enabled) {
+        esp_err_t err=pose_storage_save(&tracker,false);
+        if(err!=ESP_OK) {notice("Storage failed / retry");return;}
+        pose_enabled=false;
+        lv_label_set_text(pose_toggle_text,"Pose OFF / tap ON");
+    }
     teach_pending=(int)slot;teach_at=now_ms()+5000;
     char text[64];snprintf(text,sizeof(text),"Place %s / hold still for 5s",pose_names[slot]);
     notice(text);notice_until=teach_at+100;
@@ -327,9 +336,29 @@ static void toggle_pose(lv_event_t *event)
     (void)event;
     for(unsigned i=0;i<5;i++) if(!tracker.taught[i]) {notice("Teach Normal and all 4 directions");return;}
     if(teach_pending>=0) {notice("Wait for pose capture");return;}
+    esp_err_t err=pose_storage_save(&tracker,!pose_enabled);
+    if(err!=ESP_OK) {notice("Storage failed / switch unchanged");return;}
     pose_enabled=!pose_enabled;tracker.candidate=tracker.committed=-2;pending_pose=-1;pending_at=0;
-    lv_label_set_text(pose_toggle_text,pose_enabled?"Pose ON":"Pose locked / tap to enable");
+    lv_label_set_text(pose_toggle_text,pose_enabled?"Pose ON":"Pose OFF / tap ON");
     if(pose_enabled) { show_page(1); refresh(); }
+}
+static void clear_pose(lv_event_t *event)
+{
+    static bool held;
+    if(lv_event_get_code(event)==LV_EVENT_PRESSED) {held=false;return;}
+    if(lv_event_get_code(event)==LV_EVENT_CLICKED) {
+        if(!held) notice("Hold Clear to erase all poses");
+        held=false;return;
+    }
+    if(lv_event_get_code(event)!=LV_EVENT_LONG_PRESSED) return;
+    held=true;
+    esp_err_t err=pose_storage_clear();
+    if(err!=ESP_OK) {notice("Storage failed / poses retained");return;}
+    pose_init(&tracker);pose_enabled=false;teach_pending=-1;
+    pending_pose=-1;pending_at=0;
+    for(unsigned i=0;i<5;i++) lv_label_set_text(pose_captions[i],pose_names[i]);
+    lv_label_set_text(pose_toggle_text,"Pose OFF / tap ON");
+    notice("Calibration cleared / teach again");
 }
 static void duration(lv_obj_t *obj,uint32_t seconds,const char *prefix)
 {
@@ -438,7 +467,15 @@ static void poll(lv_timer_t *timer)
 
     if(teach_pending>=0 && now_ms()>=teach_at) {
         unsigned slot=(unsigned)teach_pending;teach_pending=-1;
-        if(now_ms()-last_sample_ms<300 && pose_teach(&tracker,slot)) {
+        pose_tracker_t taught=tracker;
+        if(now_ms()-last_sample_ms<300 && pose_teach(&taught,slot)) {
+            esp_err_t err=pose_storage_save(&taught,pose_enabled);
+            if(err!=ESP_OK) {
+                ESP_LOGW("dashboard_pose","Save failed: %s",esp_err_to_name(err));
+                notice("Storage failed / pose not saved");
+                return;
+            }
+            tracker=taught;
             char text[48];snprintf(text,sizeof(text),"%s / saved",pose_names[slot]);
             lv_label_set_text(pose_captions[slot],text);notice("Pose saved");
         } else notice("Not saved / hold still, then retry");
@@ -449,9 +486,14 @@ static void poll(lv_timer_t *timer)
 }
 void app_main(void)
 {
-    ESP_LOGI("dashboard","CODEX V6");
+    ESP_LOGI("dashboard","CODEX V6.1");
     updates=xQueueCreate(1,sizeof(dashboard_message_t));samples=xQueueCreate(1,sizeof(posture_sample_t));
     assert(updates && samples);pose_init(&tracker);
+    ESP_ERROR_CHECK(nvs_flash_init());
+    esp_err_t pose_err=pose_storage_load(&tracker,&pose_enabled);
+    if(pose_err==ESP_OK) ESP_LOGI("dashboard_pose","Calibration restored / enabled=%d",pose_enabled);
+    else if(pose_err!=ESP_ERR_NVS_NOT_FOUND)
+        ESP_LOGW("dashboard_pose","Calibration not restored: %s",esp_err_to_name(pose_err));
     bsp_display_start();bsp_display_lock(-1);
     touch=bsp_display_get_input_dev();
     if(touch) {
@@ -511,9 +553,16 @@ void app_main(void)
         btn=lv_obj_get_parent(binding_labels[i]);lv_obj_remove_event_cb(btn,action);
         lv_obj_add_state(btn,LV_STATE_DISABLED);
     }
-    pose_toggle_text=button(pages[2],"Pose locked / tap to enable","",0,325,400,42);
+    for(unsigned i=0;i<5;i++) if(tracker.taught[i]) {
+        char text[48];snprintf(text,sizeof(text),"%s / saved",pose_names[i]);
+        lv_label_set_text(pose_captions[i],text);
+    }
+    pose_toggle_text=button(pages[2],pose_enabled?"Pose ON":"Pose OFF / tap ON","",0,325,248,42);
     lv_obj_t *toggle=lv_obj_get_parent(pose_toggle_text);lv_obj_remove_event_cb(toggle,action);
     lv_obj_add_event_cb(toggle,toggle_pose,LV_EVENT_CLICKED,NULL);
+    lv_obj_t *clear_caption=button(pages[2],"Hold Clear","",260,325,140,42);
+    lv_obj_t *clear_button=lv_obj_get_parent(clear_caption);lv_obj_remove_event_cb(clear_button,action);
+    lv_obj_add_event_cb(clear_button,clear_pose,LV_EVENT_ALL,NULL);
     footer=label(screen,"Swipe left / right to change pages",40,450,400,&lv_font_montserrat_20,0x94A3B8);
     saver_create(screen);show_page(0);lv_timer_create(poll,100,NULL);bsp_display_unlock();
     ble_dashboard_start(updates);posture_start(samples);

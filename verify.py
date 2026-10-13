@@ -108,7 +108,10 @@ class Checks(unittest.TestCase):
             (project/'sdkconfig').write_text('CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y\nCONFIG_COMPILER_OPTIMIZATION_PERF=y\n')
             install_app.install_firmware(project, bundle)
             self.assertTrue((project/'main/protocol.h').is_file())
-            self.assertIn('CODEX V6', (project/'main/main.c').read_text())
+            self.assertIn('CODEX V6.1', (project/'main/main.c').read_text())
+            for name in ('pose_storage.c', 'pose_storage.h', 'pose_settings.h'):
+                self.assertEqual((project/'main'/name).read_bytes(), (bundle/'firmware'/name).read_bytes())
+            self.assertIn('\"pose_storage.c\"', (project/'main/CMakeLists.txt').read_text())
             self.assertIn('waveshare/qmi8658', (project/'main/idf_component.yml').read_text())
             config = (project/'sdkconfig').read_text()
             self.assertIn('CONFIG_BT_CTRL_RUN_IN_FLASH_ONLY=y', config)

@@ -31,10 +31,10 @@ if not init or not re.search(r'\{0x36,\s*\(uint8_t\[\]\)\{0xA0\}', init.group(1)
     raise SystemExit('BSP boot orientation differs from verified A0 baseline. Flash stopped.')
 print('BSP boot MADCTL A0 baseline verified.')
 data = Path('build/lvgl_demo_v9.bin').read_bytes()
-for marker in (b'CODEX V6', b'Pose shortcuts'):
+for marker in (b'CODEX V6.1', b'Pose shortcuts'):
     if marker not in data:
-        raise SystemExit('V5 marker missing; flashing has been stopped: ' + repr(marker))
-print('V6 binary markers verified.')
+        raise SystemExit('V6.1 marker missing; flashing has been stopped: ' + repr(marker))
+print('V6.1 binary markers verified.')
 PY
 idf.py -p "$port" flash
-echo "V6 flashed. Start app_bridge.py from the bundle directory."
+echo "V6.1 flashed. Start app_bridge.py from the bundle directory."

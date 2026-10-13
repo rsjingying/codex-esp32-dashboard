@@ -62,3 +62,11 @@ hooks.json 保留其他已有 handlers；新增事件只记录事件名、会话
 旧源码与配置保存在官方项目 dashboard-backups/app-时间戳。恢复 main 文件与清单、项目根 sdkconfig，然后 fullclean、构建、烧录。数据库无需删除。
 
 SQLite / events / daily 默认在 ~/.codex/dashboard；设置 CODEX_HOME 可更改位置。别把这个目录提交到 Git。
+
+## V6 → V6.1 升级
+
+停止当前桥接，在新版仓库目录运行 `bash build_flash.sh`，完成后重新运行 `~/codex-ble-tools/bin/python app_bridge.py`。升级脚本备份原主程序并编译烧录，不执行 erase-flash。
+
+首次升级后，在 POSE 页重新教学五个姿态并开启 Pose ON；后续每次保存与开关切换都会提交到 NVS。请验证：断电重启，五个姿态仍显示 saved，Pose 开关保留；连接桥接后新的稳定姿态经过 3 秒倒计时进入对应活动，Normal 仅暂停。也可测试关闭 Pose 后重启仍为 OFF，以及长按 Hold Clear 后重启不会恢复旧校准。
+
+当前仓库自动检查覆盖持久数据和 NVS 适配层的离线测试。ESP-IDF 完整编译、NVS 实际断电恢复及屏幕触摸需要在连接开发板的 Mac 上验证。

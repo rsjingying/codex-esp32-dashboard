@@ -4,14 +4,14 @@
 
 A community-built BLE dashboard for local Codex events, pose-driven activity tracking and three AMOLED screensavers. Not an official OpenAI or Waveshare product.
 
-**版本：V6。** 原型已在作者的 Mac + 开发板上使用；支持范围以这套硬件和环境为准。CI 检查离线逻辑，不能代替 ESP-IDF 编译和实机测试。
+**版本：V6.1。** 原型已在作者的 Mac + 开发板上使用；支持范围以这套硬件和环境为准。CI 检查离线逻辑，不能代替 ESP-IDF 编译和实机测试。
 
 ## 功能
 
 - 本地 Codex 事件状态、项目别名、任务耗时、运行与等待数。
 - 优先展示需要介入的批准请求；Seen 仅确认看到，不批准请求。
 - Work / Study / AI Dev / Rest 活动计时、深度专注、暂停/恢复、长按停止。
-- 五个教学姿态、活动启动前 3 秒倒计时、反向补偿转屏与触摸坐标转换。
+- 五个教学姿态、NVS 持久校准与开关、活动启动前 3 秒倒计时、反向补偿转屏与触摸坐标转换。
 - 左右滑动切换 AI / TIMER / POSE；点计时页显示按钮，6 秒后隐藏。
 - 三款屏保：极简大时钟、呼吸光环、今日积累；上下滑换款，单击唤醒。
 - SQLite 本地活动记录；长按 Finish 生成每日 Markdown 记录。
@@ -40,7 +40,9 @@ A community-built BLE dashboard for local Codex events, pose-driven activity tra
 | 屏幕朝上平放 | Work | 原始方向 |
 | 屏幕朝下平放 | Rest | 原始方向 |
 
-姿态教学和屏保款式仅保存在板子内存，重新上电需重新教学。活动记录保存在 Mac，不会因此丢失。
+姿态校准与 Pose 开关写入板子 NVS，重启后自动恢复。V6 升级到 V6.1 后需最后教学一次；普通烧录保留 NVS，整片擦除或改变分区可能清除校准。屏保款式仍仅保存在内存。活动记录保存在 Mac。
+
+重启后从未识别姿态的暂停状态开始，等待新的稳定采样、BLE 桥接就绪和 3 秒倒计时（Normal 只暂停）。查看 POSE 页临时暂停姿态动作，离开后重新识别；重新教学会保存 Pose OFF，完成后手动开启。长按 Hold Clear 只清除本项目的姿态校准与开关。存储失败会提示且保留原有设置。
 
 ## 数据真实性与边界
 
@@ -59,7 +61,7 @@ cc -std=c11 -Wall -Wextra -Werror verify_firmware.c -lm -o /tmp/dashboard-check
 bash -n build_flash.sh
 ```
 
-12 项 Python 测试覆盖状态隔离、旧 turn、hooks 合并、安装备份、活动跨午夜、暂停/停止、BLE ACK、断线、日报、时钟和专注累计。C 检查解析上限、日期、姿态、转屏基准、滑动与屏保逻辑。
+13 项 Python 测试覆盖状态隔离、旧 turn、hooks 合并、安装备份、活动跨午夜、暂停/停止、BLE ACK、断线、日报、时钟和专注累计。新增的持久存储检查编译实际 NVS 适配代码，使用故障注入后端验证重启恢复、损坏记录、写入失败与清除。C 检查解析上限、日期、姿态、转屏基准、滑动与屏保逻辑。
 
 ## 开源与依赖
 

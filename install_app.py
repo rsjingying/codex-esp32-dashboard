@@ -73,7 +73,7 @@ def install_firmware(project, bundle):
     backup = project/'dashboard-backups'/('app-' + stamp)
     backup.mkdir(parents=True)
     for name in ('main.c', 'ble_status.c', 'ble_status.h', 'protocol.h',
-                 'posture.c', 'posture.h', 'posture_logic.h', 'interaction.h', 'pose_countdown.h', 'pose_rules.h', 'screensaver_logic.h'):
+                 'posture.c', 'posture.h', 'posture_logic.h', 'interaction.h', 'pose_countdown.h', 'pose_rules.h', 'screensaver_logic.h', 'pose_settings.h', 'pose_storage.h', 'pose_storage.c'):
         if (project/'main'/name).exists():
             shutil.copy2(project/'main'/name, backup/name)
         shutil.copyfile(bundle/'firmware'/name, project/'main'/name)
@@ -83,7 +83,7 @@ def install_firmware(project, bundle):
             shutil.copy2(project/'main'/name, backup/name)
     (project/'main/idf_component.yml').write_text(manifest_text)
     (project/'main/CMakeLists.txt').write_text(
-        'idf_component_register(SRCS "main.c" "ble_status.c" "posture.c" INCLUDE_DIRS ".")\n')
+        'idf_component_register(SRCS "main.c" "ble_status.c" "posture.c" "pose_storage.c" INCLUDE_DIRS ".")\n')
     config = project/'sdkconfig'
     shutil.copy2(config, backup/'sdkconfig')
     values = {'CONFIG_COMPILER_OPTIMIZATION_DEBUG':'n',
@@ -98,7 +98,7 @@ def install_firmware(project, bundle):
               for key, value in values.items()]
     config.write_text('\n'.join(lines)+'\n')
     print('Firmware backup:', backup)
-    print('V6 sources installed; retained pose/rotation and added three screensavers.')
+    print('V6.1 sources installed; pose calibration and enable flag now persist in NVS.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
